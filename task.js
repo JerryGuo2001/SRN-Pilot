@@ -85,8 +85,13 @@ let id = "";
 
 let totalGraphTrials = 630;  // Number of graph comparison trials
 let totalProbeTrials = 20;
-// let totaltrial = totalGraphTrials + totalProbeTrials;
-let totaltrial = 21
+let totaltrial
+let debugmode=false
+if (debugmode=="true"){
+    totaltrial = 21
+}else if (debugmode=="false"){
+    totaltrial = totalGraphTrials + totalProbeTrials;
+}
 
 let trialSequence = Array.from({ length: totaltrial }, (_, i) => ({
     type: "graph",
