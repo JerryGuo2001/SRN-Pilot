@@ -1,16 +1,112 @@
-const aGraphs = [
-    [0,1,0,0,1, 1,0,1,0,0, 0,1,0,1,0, 0,0,1,0,1, 1,0,0,1,0]  // 5x5
-];
-const bGraphs = [
-    [0,1,1,0,0, 1,0,0,1,0, 1,0,0,0,1, 0,1,0,0,1, 0,0,1,1,0]
-];
+let aGraphs = [];
+let bGraphs = [];
+let graphMetadata = [];
 
+let pairs = [];
+let pairMetadata = [];
+
+async function loadGraphsFromJSON() {
+    const response = await fetch('Block_Graph.json');
+    const jsonData = await response.json();
+
+    const seen = new Set();
+
+    for (const row of jsonData) {
+        const key = `${row.block_id}_${row.node_count}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+
+            const structure = row.graph_structure
+                .replace('[', '')
+                .replace(']', '')
+                .split(' ')
+                .filter(x => x !== '')
+                .map(n => parseInt(n, 10));
+
+            aGraphs.push(structure);
+            bGraphs.push(structure);
+            graphMetadata.push({
+                block_id: row.block_id,
+                node_count: row.node_count
+            });
+        }
+    }
+}
+
+function generateUniquePairs() {
+    pairs = [];
+    pairMetadata = [];
+
+    const n = aGraphs.length;
+    const allPairs = [];
+
+    // Step 1: Generate all unique unordered pairs
+    for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+            allPairs.push([i, j]);
+        }
+    }
+
+    // Step 2: Shuffle the pairs
+    for (let i = allPairs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allPairs[i], allPairs[j]] = [allPairs[j], allPairs[i]];
+    }
+
+    // Step 3: Push shuffled pairs to your main array
+    for (const [i, j] of allPairs) {
+        pairs.push([i, j]);
+        pairMetadata.push({
+            indexA: i,
+            indexB: j,
+            blockA: graphMetadata[i].block_id,
+            blockB: graphMetadata[j].block_id,
+            nodeCountA: graphMetadata[i].node_count,
+            nodeCountB: graphMetadata[j].node_count
+        });
+    }
+}
+
+
+
+window.onload = async () => {
+    await loadGraphsFromJSON();
+    generateUniquePairs();
+};
+
+
+///INIT TASK
 let currentIndex = 0;
+let graphIndex = 0;  // <-- NEW: keeps track of which pair to use
+
 let fastCount = 0;
 let trialData = [];
 let id = "";
-let totaltrial=10
 
+let totalGraphTrials = 630;  // Number of graph comparison trials
+let totalProbeTrials = 20;
+// let totaltrial = totalGraphTrials + totalProbeTrials;
+let totaltrial = 21
+
+let trialSequence = Array.from({ length: totaltrial }, (_, i) => ({
+    type: "graph",
+    index: i  // This will be overwritten for probe later
+}));
+
+// Randomly assign `totalProbeTrials` indices as probes
+let probeSet = new Set();
+while (probeSet.size < totalProbeTrials) {
+    let idx = Math.floor(Math.random() * totaltrial);
+    if (!probeSet.has(idx)) {
+        probeSet.add(idx);
+        trialSequence[idx] = { type: "probe" };
+    }
+}
+
+
+
+
+// Function to start the task
 function startTask() {
     id = document.getElementById("participantId").value.trim();
     if (!id) return alert("Please enter your ID");
@@ -19,6 +115,7 @@ function startTask() {
     runTrial();
 }
 
+// Function to run each trial
 function runTrial() {
     if (currentIndex >= totaltrial) {
         document.getElementById("task").style.display = "none";
@@ -26,33 +123,90 @@ function runTrial() {
         saveCSV();
         return;
     }
+    const trial = trialSequence[currentIndex];
+    console.log(trial)
+    const instructionsEl = document.getElementById("instructionsText");
+    
+    if (trial.type === "probe") {
+        instructionsEl.innerHTML = 'Press <strong>P</strong> button.';
+        instructionsEl.style.color = 'red';
 
+        drawGraph([], "graph-left");
+        drawGraph([], "graph-right");
+    
+    } else {
+        const pair = pairs[graphIndex];
+        const graphA = aGraphs[pair[0]];
+        const graphB = bGraphs[pair[1]];
+    
+        drawGraph(graphA, "graph-left");
+        drawGraph(graphB, "graph-right");
+    
+        instructionsEl.innerHTML = 'Press <strong>F</strong> if you prefer the <strong>left</strong> graph, <strong>J</strong> for the <strong>right</strong> graph.';
+        instructionsEl.style.color = 'black';
+    }    
     document.getElementById("warning").style.display = "none";
     document.getElementById("graph-container").style.display = "flex";
 
-    const a = aGraphs[0];
-    const b = bGraphs[0];
-
-    drawGraph(a, "graph-left");
-    drawGraph(b, "graph-right");
-
     const trialStart = performance.now();
     let responded = false;
-
+    
     const keyListener = (e) => {
         if (responded) return;
-        if (e.key === "f" || e.key === "j") {
-            responded = true;
-            const rt = performance.now() - trialStart;
-            trialData.push({ id, trial: currentIndex, choice: e.key, rt: Math.round(rt) });
-            document.removeEventListener("keydown", keyListener);
-
+        if  ((trial.type === "probe" && e.key === "p"||(e.key === "f" || e.key === "j")) ||
+        (trial.type === "graph" && (e.key === "f" || e.key === "j"))){
+            if (trial.type === "probe"){
+                responded = true;
+                const rt = performance.now() - trialStart;
+        
+                trialData.push({
+                    id,
+                    trial: currentIndex,
+                    type: trial.type,
+                    rt: Math.round(rt),
+                    choice: e.key,
+                    block_a: [],
+                    node_count_a: [],
+                    block_b: [],
+                    node_count_b: [],
+                    graphA:[],
+                    graphB: []
+                });
             if (rt < 100) {
                 fastCount++;
             } else {
                 fastCount = 0;
             }
-
+        }else if (trial.type === "graph"){
+            responded = true;
+            const rt = performance.now() - trialStart;
+            const[indexA, indexB] = pairs[graphIndex];;
+            const metaA = graphMetadata[indexA];
+            const metaB = graphMetadata[indexB];
+            const graphA = aGraphs[indexA];
+            const graphB = bGraphs[indexB];
+    
+            trialData.push({
+                id,
+                trial: currentIndex,
+                type: trial.type,
+                rt: Math.round(rt),
+                choice: e.key,
+                block_a: metaA.block_id,
+                node_count_a: metaA.node_count,
+                block_b: metaB.block_id,
+                node_count_b: metaB.node_count,
+                graphA: graphA,
+                graphB: graphB
+            });
+            graphIndex++;
+            if (rt < 100) {
+                fastCount++;
+            } else {
+                fastCount = 0;
+            }
+        }
+            document.removeEventListener("keydown", keyListener);
             if (fastCount >= 3) {
                 // Hide graphs, show countdown
                 document.getElementById("graph-container").style.display = "none";
@@ -86,23 +240,64 @@ function runTrial() {
 
     setTimeout(() => {
         if (!responded) {
-            trialData.push({ id, trial: currentIndex, choice: "none", rt: "timeout" });
-            document.removeEventListener("keydown", keyListener);
-            currentIndex++;
-            runTrial();
+            if(trial.type === "probe"){
+                trialData.push({
+                    id,
+                    trial: currentIndex,
+                    type: trial.type,
+                    rt: "timeout",
+                    choice: "none",
+                    block_a: [],
+                    node_count_a: [],
+                    block_b:[],
+                    node_count_b:[],
+                    graphA: [],
+                    graphB:[],
+                });
+        
+                document.removeEventListener("keydown", keyListener);
+                currentIndex++;
+                runTrial();
+            }else if( trial.type === "graph"){
+                const[indexA, indexB] = pairs[graphIndex];;
+                const metaA = graphMetadata[indexA];
+                const metaB = graphMetadata[indexB];
+                const graphA = aGraphs[indexA];
+                const graphB = bGraphs[indexB];
+
+                trialData.push({
+                    id,
+                    trial: currentIndex,
+                    type: trial.type,
+                    rt: "timeout",
+                    choice: "none",
+                    block_a: metaA.block_id,
+                    node_count_a: metaA.node_count,
+                    block_b: metaB.block_id,
+                    node_count_b: metaB.node_count,
+                    graphA: graphA,
+                    graphB: graphB
+                });
+                graphIndex++;
+                document.removeEventListener("keydown", keyListener);
+                currentIndex++;
+                runTrial();
+            }
         }
     }, 5000);
 }
 
-
+// Function to draw the graph
 function drawGraph(graphStructure, containerId) {
     const elements = [];
     const size = Math.sqrt(graphStructure.length);
 
+    // Create node elements
     for (let i = 0; i < size; i++) {
         elements.push({ data: { id: `n${i}` } });
     }
 
+    // Create edge elements
     for (let i = 0; i < size; i++) {
         for (let j = 0; j < size; j++) {
             if (graphStructure[i * size + j] === 1) {
@@ -111,40 +306,73 @@ function drawGraph(graphStructure, containerId) {
         }
     }
 
+    // Calculate edge density
     const edgeCount = elements.filter(e => e.data.source && e.data.target).length;
     const nodeCount = size;
     const maxEdges = nodeCount * (nodeCount - 1) / 2;
     const edgeDensity = edgeCount / maxEdges;
+    console.log(`Edge Density: ${edgeDensity}`);
 
-    let nodeRepulsion = 250000000;
-    if (edgeDensity > 0.75) nodeRepulsion = 100000000;
-    else if (edgeDensity > 0.5) nodeRepulsion = 7500000;
-    else if (edgeDensity > 0.25) nodeRepulsion = 500000;
-    else nodeRepulsion = 250000;
+    // Adjust node repulsion based on edge density
+    let nodeRepulsion;
+    if (edgeDensity > 1.25) nodeRepulsion = 20000000;
+    else if (edgeDensity > 1) nodeRepulsion = 15000000;
+    else if (edgeDensity > 0.75) nodeRepulsion = 10000000;
+    else if (edgeDensity > 0.5) nodeRepulsion = 750000;
+    else if (edgeDensity > 0.25) nodeRepulsion = 50000;
+    else nodeRepulsion = 2500000;
 
-    cytoscape({
+    const cy = cytoscape({
         container: document.getElementById(containerId),
         elements: elements,
         style: [
-            { selector: 'node', style: { width: '20px', height: '20px', 'background-color': 'blue', label: 'data(id)' }},
+            { selector: 'node', style: { width: '15px', height: '15px', 'background-color': 'blue' }},
             { selector: 'edge', style: { 'line-color': 'gray', width: 2 }}
         ],
         layout: {
             name: 'cose',
             nodeRepulsion: nodeRepulsion,
-            idealEdgeLength: 0,
+            idealEdgeLength: 10,
             gravity: 0.25,
             animate: true
-        }
+        },
+        zoomingEnabled: false,
+        panningEnabled: false,
+        userZoomingEnabled: false,
+        userPanningEnabled: false,
+        boxSelectionEnabled: false,
+        autoungrabify: true
     });
+    
+    // Manual layout centering by translating node positions
+    cy.on('layoutstop', () => {
+        const boundingBox = cy.elements().boundingBox();
+        const centerX = boundingBox.x1 + boundingBox.w / 2;
+        const centerY = boundingBox.y1 + boundingBox.h / 2;
+        const offsetX = cy.width() / 2 - centerX;
+        const offsetY = cy.height() / 2 - centerY;
+    
+        cy.nodes().positions((node, i) => {
+            const pos = node.position();
+            return {
+                x: pos.x + offsetX,
+                y: pos.y + offsetY
+            };
+        });
+    });
+    
+
 }
 
 
+
+
 function saveCSV() {
-    const header = "id,trial,choice,rt,graphA,graphB";
+    const header = 'id,trial,type,choice,rt,block_a,node_count_a,block_b,node_count_b,graphA,graphB';
     const rows = trialData.map(row => {
-        return `${row.id},${row.trial},${row.choice},${row.rt},"${JSON.stringify(aGraphs[0])}","${JSON.stringify(bGraphs[0])}"`;
+        return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}"`;
     });
+
     const csv = [header, ...rows].join("\n");
 
     const blob = new Blob([csv], { type: "text/csv" });
@@ -153,4 +381,6 @@ function saveCSV() {
     link.download = `data_${id}.csv`;
     link.click();
 }
+
+
 

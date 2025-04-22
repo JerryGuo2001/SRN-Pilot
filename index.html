@@ -7,12 +7,17 @@
     <script defer src="task.js"></script>
     <style>
         .graph-box {
-            width: 400px;
-            height: 400px;
+            width: 600px;
+            height: 600px;
             border: 1px solid #ccc;
-            box-sizing: border-box;
             background-color: white;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
         }
+
         
         body {
             font-family: Arial, sans-serif;
@@ -59,7 +64,7 @@
 
     <div id="task" style="display:none;">
         <h2 style="text-align: center;">Graph Comparison Task</h2>
-        <p id="instructionsText" style="text-align: center;">Press <strong>F</strong> if you prefer the <strong>left</strong> graph, <strong>J</strong> for the <strong>right</strong> graph.</p>
+        <p id="instructionsText" style="text-align: center;"></p>
         <div id="graph-container">
             <div class="graph-box" id="graph-left"></div>
             <div class="graph-box" id="graph-right"></div>
@@ -72,4 +77,15 @@
         <p>Your responses have been recorded.</p>
     </div>
 </body>
+<script>
+    window.onload = async function() {
+    await loadGraphsFromCSV();
+    generateUniquePairs();
+
+    // Now you can access:
+    // - aGraphs[i], bGraphs[i]
+    // - pairs[i] = [i, j]
+    // - pairMetadata[i] = { blockA, blockB, nodeCountA, nodeCountB }
+};
+</script>
 </html>
