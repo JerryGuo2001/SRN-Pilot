@@ -19,19 +19,20 @@ async function loadGraphsFromJSON() {
             const structure = row.graph_structure
                 .replace('[', '')
                 .replace(']', '')
-                .split(' ')
-                .filter(x => x !== '')
-                .map(n => parseInt(n, 10));
-
+                .split(',')
+                .map(n => parseInt(n.trim(), 10));
             aGraphs.push(structure);
             bGraphs.push(structure);
             graphMetadata.push({
                 block_id: row.block_id,
-                node_count: row.node_count
+                node_count: row.node_count,
+                pc_one: row.pc_one,
+                pc_two: row.pc_two,
             });
         }
     }
 }
+
 
 function generateUniquePairs() {
     pairs = [];
@@ -62,7 +63,11 @@ function generateUniquePairs() {
             blockA: graphMetadata[i].block_id,
             blockB: graphMetadata[j].block_id,
             nodeCountA: graphMetadata[i].node_count,
-            nodeCountB: graphMetadata[j].node_count
+            nodeCountB: graphMetadata[j].node_count,
+            pc1_A:graphMetadata[i].pc_one,
+            pc2_A:graphMetadata[i].pc_two,
+            pc1_B:graphMetadata[j].pc_one,
+            pc2_B:graphMetadata[j].pc_two
         });
     }
 }
@@ -87,7 +92,6 @@ let totalGraphTrials = 630;  // Number of graph comparison trials
 let totalProbeTrials = 20;
 let totaltrial = totalGraphTrials + totalProbeTrials;
 
-
 let trialSequence = Array.from({ length: totaltrial }, (_, i) => ({
     type: "graph",
     index: i  // This will be overwritten for probe later
@@ -102,7 +106,6 @@ while (probeSet.size < totalProbeTrials) {
         trialSequence[idx] = { type: "probe" };
     }
 }
-
 
 
 
@@ -131,8 +134,10 @@ function runTrial() {
         instructionsEl.innerHTML = 'Press <strong>P</strong> button.';
         instructionsEl.style.color = 'red';
 
-        drawGraph([], "graph-left");
-        drawGraph([], "graph-right");
+        const graphA = aGraphs[Math.floor(Math.random() * 31)];
+        const graphB = bGraphs[Math.floor(Math.random() * 31)];
+        drawGraph(graphA, "graph-left");
+        drawGraph(graphB, "graph-right");
     
     } else {
         const pair = pairs[graphIndex];
@@ -170,7 +175,13 @@ function runTrial() {
                     block_b: [],
                     node_count_b: [],
                     graphA:[],
-                    graphB: []
+                    graphB: [],
+                    pc1_A: [],
+                    pc2_A: [],
+                    pc1_B: [],
+                    pc2_B: [],
+                    posA:[],
+                    posB:[]
                 });
             if (rt < 100) {
                 fastCount++;
@@ -186,6 +197,10 @@ function runTrial() {
             const graphA = aGraphs[indexA];
             const graphB = bGraphs[indexB];
     
+            // Later, during logging:
+            const posA = JSON.parse(document.getElementById("graph-left").dataset.positions || "{}");
+            const posB = JSON.parse(document.getElementById("graph-right").dataset.positions || "{}");
+
             trialData.push({
                 id,
                 trial: currentIndex,
@@ -197,7 +212,13 @@ function runTrial() {
                 block_b: metaB.block_id,
                 node_count_b: metaB.node_count,
                 graphA: graphA,
-                graphB: graphB
+                graphB: graphB,
+                pc1_A: metaA.pc_one,
+                pc2_A: metaA.pc_two,
+                pc1_B: metaB.pc_one,
+                pc2_B: metaB.pc_two,
+                posA: formatPositionsForCSV(posA),
+                posB: formatPositionsForCSV(posB)
             });
             graphIndex++;
             if (rt < 100) {
@@ -253,6 +274,12 @@ function runTrial() {
                     node_count_b:[],
                     graphA: [],
                     graphB:[],
+                    pc1_A: [],
+                    pc2_A: [],
+                    pc1_B: [],
+                    pc2_B: [],
+                    posA: [],
+                    posB: []
                 });
         
                 document.removeEventListener("keydown", keyListener);
@@ -276,7 +303,13 @@ function runTrial() {
                     block_b: metaB.block_id,
                     node_count_b: metaB.node_count,
                     graphA: graphA,
-                    graphB: graphB
+                    graphB: graphB,
+                    pc1_A: metaA.pc_one,
+                    pc2_A: metaA.pc_two,
+                    pc1_B: metaB.pc_one,
+                    pc2_B: metaB.pc_two,
+                    posA: formatPositionsForCSV(posA),
+                    posB: formatPositionsForCSV(posB)
                 });
                 graphIndex++;
                 document.removeEventListener("keydown", keyListener);
@@ -284,20 +317,19 @@ function runTrial() {
                 runTrial();
             }
         }
-    }, 5000);
+        console.log("timeout")
+    }, 10000);
 }
 
-// Function to draw the graph
 function drawGraph(graphStructure, containerId) {
     const elements = [];
     const size = Math.sqrt(graphStructure.length);
+    const localPositions = {}; // Local to this graph render
 
-    // Create node elements
     for (let i = 0; i < size; i++) {
         elements.push({ data: { id: `n${i}` } });
     }
 
-    // Create edge elements
     for (let i = 0; i < size; i++) {
         for (let j = 0; j < size; j++) {
             if (graphStructure[i * size + j] === 1) {
@@ -306,14 +338,11 @@ function drawGraph(graphStructure, containerId) {
         }
     }
 
-    // Calculate edge density
     const edgeCount = elements.filter(e => e.data.source && e.data.target).length;
     const nodeCount = size;
     const maxEdges = nodeCount * (nodeCount - 1) / 2;
     const edgeDensity = edgeCount / maxEdges;
-    console.log(`Edge Density: ${edgeDensity}`);
 
-    // Adjust node repulsion based on edge density
     let nodeRepulsion;
     if (edgeDensity > 1.25) nodeRepulsion = 20000000;
     else if (edgeDensity > 1) nodeRepulsion = 15000000;
@@ -343,34 +372,50 @@ function drawGraph(graphStructure, containerId) {
         boxSelectionEnabled: false,
         autoungrabify: true
     });
-    
-    // Manual layout centering by translating node positions
+
     cy.on('layoutstop', () => {
         const boundingBox = cy.elements().boundingBox();
         const centerX = boundingBox.x1 + boundingBox.w / 2;
         const centerY = boundingBox.y1 + boundingBox.h / 2;
         const offsetX = cy.width() / 2 - centerX;
         const offsetY = cy.height() / 2 - centerY;
-    
-        cy.nodes().positions((node, i) => {
+
+        cy.nodes().positions((node) => {
             const pos = node.position();
-            return {
+            const adjusted = {
                 x: pos.x + offsetX,
                 y: pos.y + offsetY
             };
+            localPositions[node.id()] = adjusted;
+            return adjusted;
         });
-    });
-    
 
+        // Optional: assign globally if needed
+        storedPositions = localPositions;
+
+        // Store to the canvas itself for access
+        document.getElementById(containerId).dataset.positions = JSON.stringify(localPositions);
+    });
+
+    // Return handle to possibly use later (optional)
+    return cy;
+}
+
+
+function formatPositionsForCSV(posObj) {
+    return Object.entries(posObj)
+        .map(([key, val]) => `${key}:${val.x.toFixed(1)},${val.y.toFixed(1)}`)  // <-- comma between x and y
+        .join(';');  // <-- semicolon between nodes
 }
 
 
 
 
+
 function saveCSV() {
-    const header = 'id,trial,type,choice,rt,block_a,node_count_a,block_b,node_count_b,graphA,graphB';
+    const header = 'id,trial,type,rt,choice,block_a,node_count_a,block_b,node_count_b,graphA,graphB,pc1_A,pc2_A,pc1_B,pc2_B,posA,posB';
     const rows = trialData.map(row => {
-        return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}"`;
+        return `${row.id},${row.trial},${row.type},${row.rt},${row.choice},${row.block_a},${row.node_count_a},${row.block_b},${row.node_count_b},"${JSON.stringify(row.graphA)}","${JSON.stringify(row.graphB)}",${row.pc1_A},${row.pc1_B},${row.pc2_A},${row.pc2_B},"${row.posA}","${row.posB}"`;
     });
 
     const csv = [header, ...rows].join("\n");
