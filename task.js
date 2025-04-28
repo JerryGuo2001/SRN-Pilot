@@ -90,8 +90,8 @@ let id = "";
 
 let totalGraphTrials = 630;  // Number of graph comparison trials
 let totalProbeTrials = 20;
-let totaltrial = totalGraphTrials + totalProbeTrials;
-
+// let totaltrial = totalGraphTrials + totalProbeTrials;
+let totaltrial = 21
 let trialSequence = Array.from({ length: totaltrial }, (_, i) => ({
     type: "graph",
     index: i  // This will be overwritten for probe later
