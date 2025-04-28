@@ -88,7 +88,7 @@ let fastCount = 0;
 let trialData = [];
 let id = "";
 
-let totalGraphTrials = 630;  // Number of graph comparison trials
+let totalGraphTrials = 435;  // Number of graph comparison trials
 let totalProbeTrials = 20;
 // let totaltrial = totalGraphTrials + totalProbeTrials;
 let totaltrial = 21
